@@ -97,7 +97,11 @@ impl ServoApp {
             .delegate(app_state.clone())
             .build();
 
+        webview.resize(app_state.window.inner_size());
+
         *app_state.webview.borrow_mut() = Some(webview);
+
+        app_state.window.request_redraw();
 
         // 5. Event loop pumping Servo
         self.event_loop.run(move |event, _, control_flow| {
@@ -121,9 +125,11 @@ impl ServoApp {
                 },
                 tao::event::Event::UserEvent(WakerEvent) => {
                     app_state.servo.spin_event_loop();
+                    app_state.window.request_redraw();
                 }
                 tao::event::Event::RedrawRequested(_) => {
                     if let Some(ref webview) = *app_state.webview.borrow() {
+                        let _ = app_state.rendering_context.make_current();
                         webview.paint();
                         app_state.rendering_context.present();
                     }
