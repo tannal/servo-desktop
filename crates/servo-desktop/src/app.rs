@@ -7,8 +7,10 @@ use euclid::Scale;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use servo::RenderingContext;
 use servo::{
-    Servo, ServoBuilder, WebView, WebViewBuilder, WebViewDelegate, WindowRenderingContext,
+    PrefValue, Preferences, Servo, ServoBuilder, WebView, WebViewBuilder, WebViewDelegate,
+    WindowRenderingContext,
 };
+
 use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
 use tao::window::{Window, WindowBuilder};
 use url::Url;
@@ -76,8 +78,12 @@ impl ServoApp {
         );
         let _ = rendering_context.make_current();
 
+        let mut preferences = Preferences::default();
+        preferences.set_value("dom_wasm_tailwindcss_enabled", PrefValue::Bool(true));
+
         // 3. Build Servo engine instance
         let servo = ServoBuilder::default()
+            .preferences(preferences)
             .event_loop_waker(Box::new(waker))
             .build();
         // servo.setup_logging();
@@ -120,6 +126,7 @@ impl ServoApp {
                         if let Some(ref webview) = *app_state.webview.borrow() {
                             webview.resize(new_size);
                         }
+                        app_state.window.request_redraw();
                     }
                     _ => {}
                 },
