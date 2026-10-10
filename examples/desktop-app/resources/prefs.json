@@ -1,0 +1,6 @@
+{
+  "dom.tailwind.enabled": {
+    "type": "bool",
+    "value": true
+  }
+}

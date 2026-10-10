@@ -4,16 +4,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use euclid::Scale;
+use keyboard_types::{Key as SKey, KeyState, NamedKey as SNamedKey};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use servo::RenderingContext;
 use servo::{
-    Cursor as ServoCursor, DevicePoint, InputEvent, MouseButton, MouseButtonAction,
-    MouseButtonEvent, MouseMoveEvent, PrefValue, Preferences, Servo, ServoBuilder, WebView,
+    Cursor as ServoCursor, DevicePoint, InputEvent, KeyboardEvent, MouseButton, MouseButtonAction,
+    MouseButtonEvent, MouseMoveEvent, PrefValue, RenderingContext, Servo, ServoBuilder, WebView,
     WebViewBuilder, WebViewDelegate, WebViewPoint, WindowRenderingContext,
 };
-use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
-use tao::window::{CursorIcon, Window, WindowBuilder};
 use url::Url;
+use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::keyboard::{Key as WKey, NamedKey as WNamedKey};
+use winit::window::{CursorIcon, Window, WindowId};
 
 #[derive(Debug, Clone, Copy)]
 pub struct WakerEvent;
@@ -45,8 +49,8 @@ impl WebViewDelegate for AppState {
     }
 
     fn notify_cursor_changed(&self, _: WebView, cursor: ServoCursor) {
-        let tao_cursor = match cursor {
-            ServoCursor::Pointer => CursorIcon::Hand,
+        let icon = match cursor {
+            ServoCursor::Pointer => CursorIcon::Pointer,
             ServoCursor::Text => CursorIcon::Text,
             ServoCursor::Crosshair => CursorIcon::Crosshair,
             ServoCursor::Move => CursorIcon::Move,
@@ -54,7 +58,7 @@ impl WebViewDelegate for AppState {
             ServoCursor::Wait => CursorIcon::Wait,
             _ => CursorIcon::Default,
         };
-        self.window.set_cursor_icon(tao_cursor);
+        self.window.set_cursor(icon);
     }
 
     fn notify_page_title_changed(&self, _: WebView, title: Option<String>) {
@@ -64,136 +68,223 @@ impl WebViewDelegate for AppState {
     }
 }
 
+pub enum AppLifecycle {
+    Uninitialized {
+        title: String,
+        initial_url: String,
+        waker: ServoWaker,
+    },
+    Running(Rc<AppState>),
+}
+
 pub struct ServoApp {
+    lifecycle: AppLifecycle,
     event_loop: EventLoop<WakerEvent>,
 }
 
 impl ServoApp {
-    pub fn new() -> Self {
+    pub fn new(title: &str, initial_url: &str) -> Self {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-        let event_loop = EventLoopBuilder::<WakerEvent>::with_user_event().build();
-        Self { event_loop }
-    }
 
-    pub fn run(self, title: &str, initial_url: &str) -> Result<(), Box<dyn Error>> {
-        let proxy = Arc::new(self.event_loop.create_proxy());
+        let event_loop = EventLoop::<WakerEvent>::with_user_event()
+            .build()
+            .expect("Failed to create winit EventLoop");
+
+        let proxy = Arc::new(event_loop.create_proxy());
         let waker = ServoWaker(proxy);
 
-        let window = WindowBuilder::new()
-            .with_title(title)
-            .with_inner_size(tao::dpi::LogicalSize::new(1024, 768))
-            .build(&self.event_loop)?;
+        Self {
+            lifecycle: AppLifecycle::Uninitialized {
+                title: title.to_string(),
+                initial_url: initial_url.to_string(),
+                waker,
+            },
+            event_loop,
+        }
+    }
 
-        let display_handle = window.display_handle()?;
-        let window_handle = window.window_handle()?;
-        let size = window.inner_size();
+    pub fn run(mut self) -> Result<(), Box<dyn Error>> {
+        Ok(self.event_loop.run_app(&mut self.lifecycle)?)
+    }
+}
 
-        let rendering_context = Rc::new(
-            WindowRenderingContext::new(display_handle, window_handle, size)
-                .map_err(|e| format!("Could not create RenderingContext: {:?}", e))?,
-        );
-        let _ = rendering_context.make_current();
+impl ApplicationHandler<WakerEvent> for AppLifecycle {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if let AppLifecycle::Uninitialized {
+            title,
+            initial_url,
+            waker,
+        } = self
+        {
+            // 1. Create native winit window
+            let window_attributes = Window::default_attributes()
+                .with_title(title.as_str())
+                .with_inner_size(LogicalSize::new(1024, 768));
 
-        let mut preferences = Preferences::default();
-        preferences.set_value("dom_wasm_tailwindcss_enabled", PrefValue::Bool(true));
+            let window = event_loop
+                .create_window(window_attributes)
+                .expect("Failed to create winit window");
 
-        // 3. Build Servo engine instance
-        let servo = ServoBuilder::default()
-            .preferences(preferences)
-            .event_loop_waker(Box::new(waker))
-            .build();
-        // servo.setup_logging();
+            let display_handle = event_loop
+                .display_handle()
+                .expect("Failed to get display handle");
+            let window_handle = window.window_handle().expect("Failed to get window handle");
+            let size = window.inner_size();
 
-        let app_state = Rc::new(AppState {
-            window,
-            servo,
-            rendering_context: rendering_context.clone(),
-            webview: RefCell::new(None),
-            cursor_pos: Cell::new(DevicePoint::default()),
-        });
+            // 2. Initialize WebRender GPU rendering context
+            let rendering_context = Rc::new(
+                WindowRenderingContext::new(display_handle, window_handle, size)
+                    .expect("Could not create RenderingContext for window"),
+            );
+            let _ = rendering_context.make_current();
 
-        let url = Url::parse(initial_url)?;
-        let webview = WebViewBuilder::new(&app_state.servo, rendering_context)
-            .url(url)
-            .hidpi_scale_factor(Scale::new(app_state.window.scale_factor() as f32))
-            .delegate(app_state.clone())
-            .build();
+            // 3. Initialize Servo engine with in-engine Tailwind JIT
+            let servo = ServoBuilder::default()
+                .event_loop_waker(Box::new(waker.clone()))
+                .build();
+            servo.setup_logging();
+            servo.set_preference("dom_wasm_tailwindcss_enabled", PrefValue::Bool(true));
 
-        webview.resize(app_state.window.inner_size());
-        *app_state.webview.borrow_mut() = Some(webview);
-        app_state.window.request_redraw();
+            let app_state = Rc::new(AppState {
+                window,
+                servo,
+                rendering_context: rendering_context.clone(),
+                webview: RefCell::new(None),
+                cursor_pos: Cell::new(DevicePoint::default()),
+            });
 
-        self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Wait;
+            // 4. Create the WebView loading the HTML / Wasm app
+            let url = Url::parse(initial_url).expect("Invalid initial URL");
+            let webview = WebViewBuilder::new(&app_state.servo, rendering_context)
+                .url(url)
+                .hidpi_scale_factor(Scale::new(app_state.window.scale_factor() as f32))
+                .delegate(app_state.clone())
+                .build();
 
-            app_state.servo.spin_event_loop();
+            webview.resize(app_state.window.inner_size());
+            webview.set_focused(true);
 
-            match event {
-                tao::event::Event::WindowEvent {
-                    event, window_id, ..
-                } if window_id == app_state.window.id() => {
-                    match event {
-                        tao::event::WindowEvent::CloseRequested => {
-                            *control_flow = ControlFlow::Exit;
-                        }
-                        // Continuous redraw on resize (avoids blank screen)
-                        tao::event::WindowEvent::Resized(new_size) => {
-                            if let Some(ref webview) = *app_state.webview.borrow() {
-                                webview.resize(new_size);
-                            }
-                            app_state.window.request_redraw();
-                        }
-                        // Mouse Movement & Hover tracking
-                        tao::event::WindowEvent::CursorMoved { position, .. } => {
-                            let point = DevicePoint::new(position.x as f32, position.y as f32);
-                            app_state.cursor_pos.set(point);
+            *app_state.webview.borrow_mut() = Some(webview);
+            app_state.window.request_redraw();
 
-                            if let Some(ref webview) = *app_state.webview.borrow() {
-                                webview.notify_input_event(InputEvent::MouseMove(
-                                    MouseMoveEvent::new(WebViewPoint::Device(point)),
-                                ));
-                            }
-                        }
-                        // Mouse Click (Down & Up) -> Triggers Dioxus onClick handlers
-                        tao::event::WindowEvent::MouseInput { state, button, .. } => {
-                            let btn = match button {
-                                tao::event::MouseButton::Left => MouseButton::Primary,
-                                tao::event::MouseButton::Right => MouseButton::Secondary,
-                                tao::event::MouseButton::Middle => MouseButton::Auxiliary,
-                                _ => MouseButton::Primary,
-                            };
-                            let action = match state {
-                                tao::event::ElementState::Pressed => MouseButtonAction::Down,
-                                tao::event::ElementState::Released => MouseButtonAction::Up,
-                                _ => unreachable!(),
-                            };
+            *self = AppLifecycle::Running(app_state);
+        }
+    }
 
-                            if let Some(ref webview) = *app_state.webview.borrow() {
-                                webview.notify_input_event(InputEvent::MouseButton(
-                                    MouseButtonEvent::new(
-                                        action,
-                                        btn,
-                                        WebViewPoint::Device(app_state.cursor_pos.get()),
-                                    ),
-                                ));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                tao::event::Event::UserEvent(WakerEvent) => {
-                    app_state.servo.spin_event_loop();
-                    app_state.window.request_redraw();
-                }
-                tao::event::Event::RedrawRequested(_) => {
-                    if let Some(ref webview) = *app_state.webview.borrow() {
-                        let _ = app_state.rendering_context.make_current();
-                        webview.paint();
-                        app_state.rendering_context.present();
-                    }
-                }
-                _ => {}
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: WakerEvent) {
+        if let AppLifecycle::Running(state) = self {
+            state.servo.spin_event_loop();
+            state.window.request_redraw();
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let AppLifecycle::Running(state) = self else {
+            return;
+        };
+
+        if window_id != state.window.id() {
+            return;
+        }
+
+        state.servo.spin_event_loop();
+
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
             }
-        });
+            WindowEvent::Resized(new_size) => {
+                if let Some(ref webview) = *state.webview.borrow() {
+                    webview.resize(new_size);
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::Focused(is_focused) => {
+                if let Some(ref webview) = *state.webview.borrow() {
+                    webview.set_focused(is_focused);
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let point = DevicePoint::new(position.x as f32, position.y as f32);
+                state.cursor_pos.set(point);
+
+                if let Some(ref webview) = *state.webview.borrow() {
+                    webview.notify_input_event(InputEvent::MouseMove(MouseMoveEvent::new(
+                        WebViewPoint::Device(point),
+                    )));
+                }
+            }
+            WindowEvent::MouseInput {
+                state: button_state,
+                button,
+                ..
+            } => {
+                let btn = match button {
+                    winit::event::MouseButton::Left => MouseButton::Primary,
+                    winit::event::MouseButton::Right => MouseButton::Secondary,
+                    winit::event::MouseButton::Middle => MouseButton::Auxiliary,
+                    _ => MouseButton::Primary,
+                };
+                let action = match button_state {
+                    winit::event::ElementState::Pressed => MouseButtonAction::Down,
+                    winit::event::ElementState::Released => MouseButtonAction::Up,
+                };
+
+                if let Some(ref webview) = *state.webview.borrow() {
+                    webview.notify_input_event(InputEvent::MouseButton(MouseButtonEvent::new(
+                        action,
+                        btn,
+                        WebViewPoint::Device(state.cursor_pos.get()),
+                    )));
+                }
+            }
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
+                let key_state = match key_event.state {
+                    winit::event::ElementState::Pressed => KeyState::Down,
+                    winit::event::ElementState::Released => KeyState::Up,
+                };
+
+                let key = match key_event.logical_key {
+                    WKey::Character(ref s) => Some(SKey::Character(s.to_string())),
+                    WKey::Named(named) => match named {
+                        WNamedKey::Backspace => Some(SKey::Named(SNamedKey::Backspace)),
+                        WNamedKey::Enter => Some(SKey::Named(SNamedKey::Enter)),
+                        WNamedKey::Delete => Some(SKey::Named(SNamedKey::Delete)),
+                        WNamedKey::ArrowLeft => Some(SKey::Named(SNamedKey::ArrowLeft)),
+                        WNamedKey::ArrowRight => Some(SKey::Named(SNamedKey::ArrowRight)),
+                        WNamedKey::ArrowUp => Some(SKey::Named(SNamedKey::ArrowUp)),
+                        WNamedKey::ArrowDown => Some(SKey::Named(SNamedKey::ArrowDown)),
+                        WNamedKey::Tab => Some(SKey::Named(SNamedKey::Tab)),
+                        WNamedKey::Escape => Some(SKey::Named(SNamedKey::Escape)),
+                        WNamedKey::Space => Some(SKey::Character(" ".into())),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+
+                if let Some(k) = key {
+                    if let Some(ref webview) = *state.webview.borrow() {
+                        webview.notify_input_event(InputEvent::Keyboard(
+                            KeyboardEvent::from_state_and_key(key_state, k),
+                        ));
+                    }
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                if let Some(ref webview) = *state.webview.borrow() {
+                    let _ = state.rendering_context.make_current();
+                    webview.paint();
+                    state.rendering_context.present();
+                }
+            }
+            _ => {}
+        }
     }
 }

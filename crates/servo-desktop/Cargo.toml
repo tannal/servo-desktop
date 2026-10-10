@@ -6,7 +6,7 @@ authors = ["The Tauri and Servo Developers"]
 description = "Servo in-process rendering runtime for the Tauri framework"
 
 [dependencies]
-tao = { workspace = true }
+winit = { workspace = true }
 notify-rust = { workspace = true }
 rfd = { workspace = true }
 
@@ -17,5 +17,6 @@ raw-window-handle = { workspace = true }
 euclid = { workspace = true }
 url = { workspace = true }
 rustls = { workspace = true }
+keyboard-types = { workspace = true }
 
 log = { workspace = true }

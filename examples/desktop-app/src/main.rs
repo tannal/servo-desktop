@@ -14,8 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("HOME").unwrap()
     );
 
-    let app = ServoApp::new();
-    app.run("Dioxus + Tailwind Native App", &html_path)?;
+    let app = ServoApp::new("Dioxus + Tailwind Native App", &html_path);
+    app.run()?;
 
     Ok(())
 }
