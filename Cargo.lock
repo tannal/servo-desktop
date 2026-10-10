@@ -6404,12 +6404,16 @@ dependencies = [
 name = "servo-desktop"
 version = "0.1.0"
 dependencies = [
+ "euclid",
  "log",
  "notify-rust",
+ "raw-window-handle",
  "rfd",
+ "rustls",
  "servo",
- "servo-url",
+ "servo-embedder-traits",
  "tao",
+ "url",
 ]
 
 [[package]]

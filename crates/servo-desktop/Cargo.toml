@@ -10,7 +10,12 @@ tao = { workspace = true }
 notify-rust = { workspace = true }
 rfd = { workspace = true }
 
+# Servo integration
 servo = { workspace = true }
-servo-url = { workspace = true }
+servo-embedder-traits = { workspace = true }
+raw-window-handle = { workspace = true }
+euclid = { workspace = true }
+url = { workspace = true }
+rustls = { workspace = true }
 
 log = { workspace = true }

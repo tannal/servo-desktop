@@ -1,56 +1,132 @@
+use std::cell::RefCell;
+use std::error::Error;
+use std::rc::Rc;
 use std::sync::Arc;
-use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
-use tao::window::{Window, WindowBuilder};
 
-use crate::waker::{DesktopEvent, TaoEventLoopWaker};
+use euclid::Scale;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use servo::RenderingContext;
+use servo::{
+    Servo, ServoBuilder, WebView, WebViewBuilder, WebViewDelegate, WindowRenderingContext,
+};
+use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
+use tao::window::{Window, WindowBuilder};
+use url::Url;
+
+#[derive(Debug, Clone, Copy)]
+pub struct WakerEvent;
+
+#[derive(Clone)]
+pub struct ServoWaker(pub Arc<EventLoopProxy<WakerEvent>>);
+
+impl embedder_traits::EventLoopWaker for ServoWaker {
+    fn clone_box(&self) -> Box<dyn embedder_traits::EventLoopWaker> {
+        Box::new(self.clone())
+    }
+
+    fn wake(&self) {
+        let _ = self.0.send_event(WakerEvent);
+    }
+}
+
+pub struct AppState {
+    pub window: Window,
+    pub servo: Servo,
+    pub rendering_context: Rc<WindowRenderingContext>,
+    pub webview: RefCell<Option<WebView>>,
+}
+
+impl WebViewDelegate for AppState {
+    fn notify_new_frame_ready(&self, _: WebView) {
+        self.window.request_redraw();
+    }
+}
 
 pub struct ServoApp {
-    pub event_loop: EventLoop<DesktopEvent>,
+    event_loop: EventLoop<WakerEvent>,
 }
 
 impl ServoApp {
     pub fn new() -> Self {
-        let event_loop = EventLoopBuilder::<DesktopEvent>::with_user_event().build();
+        // Install aws-lc-rs crypto provider required by rustls in Servo
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let event_loop = EventLoopBuilder::<WakerEvent>::with_user_event().build();
         Self { event_loop }
     }
 
-    pub fn run<F>(self, title: &str, mut on_init: F)
-    where
-        F: FnMut(&Window, &EventLoop<DesktopEvent>) + 'static,
-    {
-        let proxy = self.event_loop.create_proxy();
-        let _waker = Box::new(TaoEventLoopWaker::new(proxy));
+    pub fn run(self, title: &str, initial_url: &str) -> Result<(), Box<dyn Error>> {
+        let proxy = Arc::new(self.event_loop.create_proxy());
+        let waker = ServoWaker(proxy);
 
-        let window = Arc::new(
-            WindowBuilder::new()
-                .with_title(title)
-                .build(&self.event_loop)
-                .expect("Failed to create TAO window"),
+        // 1. Create the native TAO window
+        let window = WindowBuilder::new()
+            .with_title(title)
+            .with_inner_size(tao::dpi::LogicalSize::new(1024, 768))
+            .build(&self.event_loop)?;
+
+        // 2. Initialize WebRender GPU rendering context
+        let display_handle = window.display_handle()?;
+        let window_handle = window.window_handle()?;
+        let size = window.inner_size();
+
+        let rendering_context = Rc::new(
+            WindowRenderingContext::new(display_handle, window_handle, size)
+                .map_err(|e| format!("Could not create RenderingContext: {:?}", e))?,
         );
+        let _ = rendering_context.make_current();
 
-        // Allows configuring system tray, menus, and window in the app
-        on_init(&window, &self.event_loop);
+        // 3. Build Servo engine instance
+        let servo = ServoBuilder::default()
+            .event_loop_waker(Box::new(waker))
+            .build();
+        // servo.setup_logging();
 
+        let app_state = Rc::new(AppState {
+            window,
+            servo,
+            rendering_context: rendering_context.clone(),
+            webview: RefCell::new(None),
+        });
+
+        // 4. Create the WebView loading the HTML / Wasm app
+        let url = Url::parse(initial_url)?;
+        let webview = WebViewBuilder::new(&app_state.servo, rendering_context)
+            .url(url)
+            .hidpi_scale_factor(Scale::new(app_state.window.scale_factor() as f32))
+            .delegate(app_state.clone())
+            .build();
+
+        *app_state.webview.borrow_mut() = Some(webview);
+
+        // 5. Event loop pumping Servo
         self.event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
+
+            app_state.servo.spin_event_loop();
 
             match event {
                 tao::event::Event::WindowEvent {
                     event, window_id, ..
-                } if window_id == window.id() => match event {
+                } if window_id == app_state.window.id() => match event {
                     tao::event::WindowEvent::CloseRequested => {
                         *control_flow = ControlFlow::Exit;
                     }
-                    tao::event::WindowEvent::Resized(_) => {
-                        window.request_redraw();
+                    tao::event::WindowEvent::Resized(new_size) => {
+                        if let Some(ref webview) = *app_state.webview.borrow() {
+                            webview.resize(new_size);
+                        }
                     }
                     _ => {}
                 },
-                tao::event::Event::UserEvent(DesktopEvent::ServoWakeup) => {
-                    window.request_redraw();
+                tao::event::Event::UserEvent(WakerEvent) => {
+                    app_state.servo.spin_event_loop();
                 }
                 tao::event::Event::RedrawRequested(_) => {
-                    // Servo render/present call
+                    if let Some(ref webview) = *app_state.webview.borrow() {
+                        webview.paint();
+                        app_state.rendering_context.present();
+                    }
                 }
                 _ => {}
             }

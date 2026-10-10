@@ -16,6 +16,10 @@ servo = { path = "../servo/components/servo" }
 servo-embedder-traits = { path = "../servo/components/shared/embedder" }
 servo-url = { path = "../servo/components/url" }
 
+euclid = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["logging", "std", "tls12"] }
+url = "2.5"
+
 # System & Utilities
 raw-window-handle = "0.6"
 log = "0.4"
