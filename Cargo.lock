@@ -6406,10 +6406,8 @@ version = "0.1.0"
 dependencies = [
  "log",
  "notify-rust",
- "raw-window-handle",
  "rfd",
  "servo",
- "servo-embedder-traits",
  "servo-url",
  "tao",
 ]

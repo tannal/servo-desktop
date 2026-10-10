@@ -1,13 +1,8 @@
-//! Lightweight native desktop application shell powered by TAO and Servo.
-
 pub mod app;
-pub mod embedder;
-pub mod window;
+pub mod waker;
 
 pub use app::ServoApp;
-pub use embedder::{MinimalServoEmbedder, ServoEvent};
-pub use window::ServoDesktopWindow;
+pub use waker::{DesktopEvent, TaoEventLoopWaker};
 
-// Re-export native desktop capabilities directly
 pub use notify_rust::Notification;
 pub use rfd::FileDialog;

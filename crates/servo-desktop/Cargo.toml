@@ -9,8 +9,8 @@ description = "Servo in-process rendering runtime for the Tauri framework"
 tao = { workspace = true }
 notify-rust = { workspace = true }
 rfd = { workspace = true }
+
 servo = { workspace = true }
-servo-embedder-traits = { workspace = true }
 servo-url = { workspace = true }
-raw-window-handle = { workspace = true }
+
 log = { workspace = true }

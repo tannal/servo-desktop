@@ -1,8 +1,8 @@
 use notify_rust::Notification;
 use rfd::FileDialog;
 use servo_desktop::ServoApp;
-use tao::menu::{MenuBar, MenuItem};
-use tao::system_tray::SystemTrayBuilder;
+// use tao::menu::{MenuBar, MenuItem};
+// use tao::system_tray::SystemTrayBuilder;
 
 fn main() {
     env_logger::init();
@@ -17,7 +17,7 @@ fn main() {
         .expect("Failed to send notification");
 
     // 2. Run the application
-    app.run("Servo Native App", |window| {
+    app.run("Servo Native App", |window, event_loop| {
         log::info!("Window successfully initialized with ID: {:?}", window.id());
 
         // 3. Demonstrate native file dialog (XDG Portal / GTK dialog, zero WebKit)
