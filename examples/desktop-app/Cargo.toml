@@ -1,0 +1,12 @@
+[package]
+name = "desktop-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+servo-desktop = { path = "../../crates/servo-desktop" }
+tao = { workspace = true }
+notify-rust = { workspace = true }
+rfd = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

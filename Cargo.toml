@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "crates/servo-desktop",
+    "examples/desktop-app",
+]
+resolver = "2"
+
+[workspace.dependencies]
+tauri-runtime = "2.12.1"
+tao = "0.37.1"
+notify-rust = "4.18.2"
+rfd = "0.17.2"
+
+# Local Servo checkout on feature-branch first-class-wasm-poc
+servo = { path = "../servo/components/servo" }
+servo-embedder-traits = { path = "../servo/components/shared/embedder" }
+servo-url = { path = "../servo/components/url" }
+
+# System & Utilities
+raw-window-handle = "0.6"
+log = "0.4"
+env_logger = "0.11"

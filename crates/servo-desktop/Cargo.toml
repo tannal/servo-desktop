@@ -1,0 +1,16 @@
+[package]
+name = "servo-desktop"
+version = "0.1.0"
+edition = "2024"
+authors = ["The Tauri and Servo Developers"]
+description = "Servo in-process rendering runtime for the Tauri framework"
+
+[dependencies]
+tao = { workspace = true }
+notify-rust = { workspace = true }
+rfd = { workspace = true }
+servo = { workspace = true }
+servo-embedder-traits = { workspace = true }
+servo-url = { workspace = true }
+raw-window-handle = { workspace = true }
+log = { workspace = true }
