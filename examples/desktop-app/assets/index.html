@@ -404,6 +404,40 @@
                 attributeFilter: ["data-curve"],
             });
         </script>
+        <script>
+            // Automated rapid stress test
+            window.runMemoryBench = async function (cycles = 100) {
+                console.log(
+                    `Starting ${cycles} automated interaction cycles...`,
+                );
+                const input = document.querySelector("input");
+
+                for (let i = 0; i < cycles; i++) {
+                    // 1. Add item
+                    input.value = `Stress Task ${i}`;
+                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                    input.dispatchEvent(
+                        new KeyboardEvent("keydown", {
+                            key: "Enter",
+                            code: "Enter",
+                            keyCode: 13,
+                            bubbles: true,
+                        }),
+                    );
+                    // 2. Yield so Servo paints and runs the Dioxus reconciliation pass
+                    await new Promise((r) => setTimeout(r, 30));
+                    // 3. Delete the newly created item
+                    const deleteBtn = document.querySelector(
+                        "li button, button.destroy",
+                    );
+                    if (deleteBtn) {
+                        deleteBtn.click();
+                    }
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                console.log("Bench completed!");
+            };
+        </script>
 
         <!-- <button onclick="printHTML()">print HTML</button>
   <script>

@@ -1,0 +1,452 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Servo Wasm Component Platform Demo</title>
+        <style>
+            :root {
+                --bg: #181825;
+                --card-bg: #1e1e2e;
+                --accent: #89b4fa;
+                --primary: #a6e3a1;
+                --secondary: #fab387;
+                --text: #cdd6f4;
+                --subtext: #a6adc8;
+                --surface: #313244;
+                --border: #45475a;
+            }
+
+            body {
+                margin: 0;
+                padding: 30px;
+                background: var(--bg);
+                color: var(--text);
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    monospace, sans-serif;
+                display: flex;
+                justify-content: center;
+                gap: 28px;
+            }
+
+            /* LEFT PANEL: JavaScript Host Controller & Bridge */
+            .js-panel {
+                background: #11111b;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 24px;
+                width: 320px;
+                height: fit-content;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            }
+
+            .js-panel h2 {
+                margin-top: 0;
+                font-size: 1.05rem;
+                letter-spacing: 0.5px;
+                color: #fab387;
+                border-bottom: 1px solid var(--surface);
+                padding-bottom: 8px;
+            }
+
+            .js-panel p {
+                font-size: 0.8rem;
+                color: var(--subtext);
+                line-height: 1.4;
+                margin-bottom: 16px;
+            }
+
+            .control-label {
+                font-size: 0.75rem;
+                font-weight: bold;
+                color: var(--accent);
+                margin-bottom: 4px;
+                text-transform: uppercase;
+            }
+
+            .js-input {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px 10px;
+                border-radius: 6px;
+                border: 1px solid var(--surface);
+                background: #181825;
+                color: var(--text);
+                font-size: 0.85rem;
+                outline: none;
+                margin-bottom: 14px;
+            }
+
+            .js-input:focus {
+                border-color: var(--accent);
+            }
+
+            .btn {
+                border: none;
+                padding: 8px 14px;
+                font-size: 0.8rem;
+                font-weight: 600;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+
+            .btn-primary {
+                background: var(--primary);
+                color: #11111b;
+            }
+
+            .btn-secondary {
+                background: var(--surface);
+                color: var(--text);
+                border: 1px solid var(--border);
+            }
+
+            .btn-block {
+                width: 100%;
+                margin-bottom: 10px;
+                text-align: left;
+            }
+
+            .telemetry-card {
+                margin-top: 18px;
+                background: #181825;
+                border: 1px solid var(--surface);
+                border-radius: 6px;
+                padding: 12px;
+                font-family: monospace;
+                font-size: 0.75rem;
+                line-height: 1.5;
+                color: #89b4fa;
+            }
+
+            /* RIGHT PANEL: Dioxus VirtualDOM Wasm Container */
+            .wasm-card {
+                background: var(--card-bg);
+                border: 1px solid var(--surface);
+                border-radius: 12px;
+                padding: 26px;
+                width: 620px;
+                box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+            }
+
+            .subtitle {
+                color: var(--subtext);
+                margin-top: 0;
+                margin-bottom: 16px;
+                font-size: 0.85rem;
+            }
+
+            .chip-btn {
+                background: #181825;
+                border: 1px solid var(--surface);
+                color: #89b4fa;
+                font-family: monospace;
+                font-size: 0.7rem;
+                padding: 2px 6px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+
+            .chip-btn:hover {
+                border-color: var(--accent);
+            }
+
+            .filter-btn {
+                background: transparent;
+                border: 1px solid var(--surface);
+                color: var(--subtext);
+                padding: 4px 8px;
+                font-size: 0.72rem;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+            }
+
+            .filter-btn.active {
+                background: var(--surface);
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+
+            .btn-action {
+                background: transparent;
+                border: none;
+                color: var(--subtext);
+                font-size: 0.72rem;
+                font-weight: 600;
+                cursor: pointer;
+                text-decoration: underline;
+            }
+
+            .btn-checkbox {
+                border: 1px solid var(--surface);
+                background: #11111b;
+                color: var(--primary);
+                font-family: monospace;
+                font-size: 0.8rem;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 3px 6px;
+                cursor: pointer;
+            }
+
+            .btn-delete {
+                border: none;
+                background: #45475a;
+                color: #f38ba8;
+                font-size: 0.72rem;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div
+            class="max-w-sm rounded-2xl overflow-hidden shadow-lg bg-white border border-gray-100 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+        >
+            <!-- Card Image -->
+            <img class="w-full h-48 object-cover" src="" alt="Card preview" />
+
+            <!-- Content Section -->
+            <div class="p-6">
+                <!-- Badge -->
+                <span
+                    class="inline-block px-3 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-full mb-3"
+                >
+                    Technology
+                </span>
+
+                <!-- Title -->
+                <h3 class="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                    Building Modern UIs with Tailwind CSS
+                </h3>
+
+                <!-- Description -->
+                <p class="text-sm text-gray-600 mb-4 line-clamp-3">
+                    Learn how utility-first CSS can speed up your frontend
+                    development workflow and make styling responsive components
+                    easier than ever.
+                </p>
+
+                <!-- Footer / Action -->
+                <div
+                    id="test"
+                    class="flex items-center justify-between pt-4 border-t border-gray-100"
+                >
+                    <div class="flex items-center space-x-3">
+                        <img
+                            class="w-8 h-8 rounded-full object-cover"
+                            src=""
+                            alt="Author avatar"
+                        />
+                        <span class="text-xs font-medium text-gray-700"
+                            >Jane Doe</span
+                        >
+                    </div>
+
+                    <a
+                        href="#"
+                        class="inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                        Read more &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- <script>
+    setInterval(() => {
+      const test = document.querySelector('#test');
+      const style = window.getComputedStyle(test);
+      console.log(style.display);
+      const div = document.createElement('div')
+      div.setAttribute('class', "grid text-xs")
+      const divStyle = window.getComputedStyle(div)
+      div.innerText = 'text grid'
+      console.log(divStyle.display);
+      test.appendChild(div)
+      console.log(divStyle.display);
+
+    }, 2000)
+  </script> -->
+
+        <!-- RIGHT: Dioxus VirtualDOM Mount Point -->
+        <div id="todo-app-root"></div>
+
+        <!-- Native Wasm Component: Loaded directly by Servo with zero JS glue -->
+        <script type="wasm-component" src="wasm_guest.wasm"></script>
+        <script>
+            function drawGlyph(canvas, d) {
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return;
+                const w = canvas.width;
+                const h = canvas.height;
+
+                // 1. Clear background
+                ctx.clearRect(0, 0, w, h);
+
+                // 2. Grid Guidelines
+                ctx.strokeStyle = "#1e1e2e";
+                ctx.lineWidth = 1;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(0, 260);
+                ctx.lineTo(w, 260);
+                ctx.moveTo(0, 80);
+                ctx.lineTo(w, 80);
+                ctx.stroke();
+
+                // 3. Tangent Dashed Lines
+                if (d.tangents) {
+                    ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 1.5;
+
+                    // P0 -> P1 (Tangent In)
+                    ctx.strokeStyle = "#f38ba8";
+                    ctx.beginPath();
+                    ctx.moveTo(d.p0[0], d.p0[1]);
+                    ctx.lineTo(d.p1[0], d.p1[1]);
+                    ctx.stroke();
+
+                    // P3 -> P2 (Tangent Out)
+                    ctx.strokeStyle = "#a6e3a1";
+                    ctx.beginPath();
+                    ctx.moveTo(d.p3[0], d.p3[1]);
+                    ctx.lineTo(d.p2[0], d.p2[1]);
+                    ctx.stroke();
+                }
+
+                // 4. Bezier Curve Path
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(d.p0[0], d.p0[1]);
+                ctx.bezierCurveTo(
+                    d.p1[0],
+                    d.p1[1],
+                    d.p2[0],
+                    d.p2[1],
+                    d.p3[0],
+                    d.p3[1],
+                );
+
+                if (d.filled) {
+                    ctx.fillStyle = "rgba(137, 180, 250, 0.15)";
+                    ctx.fill();
+                }
+
+                ctx.strokeStyle = "#89b4fa";
+                ctx.lineWidth = d.stroke_width || 4;
+                ctx.lineCap = "round";
+                ctx.stroke();
+
+                // 5. Curve Midpoint (t=0.5)
+                const mx = (d.p0[0] + 3 * d.p1[0] + 3 * d.p2[0] + d.p3[0]) / 8;
+                const my = (d.p0[1] + 3 * d.p1[1] + 3 * d.p2[1] + d.p3[1]) / 8;
+                ctx.fillStyle = "#fab387";
+                ctx.beginPath();
+                ctx.arc(mx, my, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Helper for handles and anchor points
+                function drawCircle(x, y, r, fill, stroke) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+                    if (stroke) {
+                        ctx.strokeStyle = stroke;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                }
+
+                // Anchor points P0, P3
+                drawCircle(d.p0[0], d.p0[1], 6, "#cdd6f4", "#11111b");
+                drawCircle(d.p3[0], d.p3[1], 6, "#cdd6f4", "#11111b");
+
+                // Control handles P1, P2
+                if (d.tangents) {
+                    drawCircle(d.p1[0], d.p1[1], 6, "#f38ba8", "#11111b");
+                    drawCircle(d.p2[0], d.p2[1], 6, "#a6e3a1", "#11111b");
+                }
+            }
+
+            // Observe Canvas element insertion and reactive attribute mutations
+            const canvasObserver = new MutationObserver((mutations) => {
+                for (const m of mutations) {
+                    if (m.type === "childList") {
+                        const c = document.getElementById("glyph-canvas");
+                        if (c && c.getAttribute("data-curve")) {
+                            drawGlyph(
+                                c,
+                                JSON.parse(c.getAttribute("data-curve")),
+                            );
+                        }
+                    } else if (
+                        m.type === "attributes" &&
+                        m.attributeName === "data-curve"
+                    ) {
+                        drawGlyph(
+                            m.target,
+                            JSON.parse(m.target.getAttribute("data-curve")),
+                        );
+                    }
+                }
+            });
+
+            canvasObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ["data-curve"],
+            });
+        </script>
+
+        <script>
+            // Automated rapid stress test
+            console.log("brainfuck");
+            runMemoryBench();
+            window.runMemoryBench = async function (cycles = 100) {
+                console.log(
+                    `Starting ${cycles} automated interaction cycles...`,
+                );
+                const input = document.querySelector("input");
+
+                for (let i = 0; i < cycles; i++) {
+                    // 1. Add item
+                    input.value = `Stress Task ${i}`;
+                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                    input.dispatchEvent(
+                        new KeyboardEvent("keydown", {
+                            key: "Enter",
+                            code: "Enter",
+                            keyCode: 13,
+                            bubbles: true,
+                        }),
+                    );
+                    // 2. Yield so Servo paints and runs the Dioxus reconciliation pass
+                    await new Promise((r) => setTimeout(r, 30));
+                    // 3. Delete the newly created item
+                    const deleteBtn = document.querySelector(
+                        "li button, button.destroy",
+                    );
+                    if (deleteBtn) {
+                        deleteBtn.click();
+                    }
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+                console.log("Bench completed!");
+            };
+        </script>
+
+        <button onclick="printHTML()">print HTML</button>
+        <script>
+            function printHTML() {
+                console.log(document.body.innerHTML);
+            }
+        </script>
+    </body>
+</html>
